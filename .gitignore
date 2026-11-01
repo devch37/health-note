@@ -1,0 +1,25 @@
+# OS / IDE
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# env
+.env
+.env.*
+!.env.example
+
+# backend
+backend/build/
+backend/.gradle/
+backend/bin/
+backend/out/
+
+# web
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/next-env.d.ts
+apps/web/*.tsbuildinfo

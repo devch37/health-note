@@ -28,12 +28,14 @@ flowchart TD
 
 분석 진행 화면은 이탈해도 된다. 홈의 "분석 중" 카드와 "확인이 필요한 검진" 카드로 복귀한다(MVP에는 푸시·메일 알림 없음).
 
-## 2. 정보 구조 / 라우트 (Next.js App Router)
+## 2. 정보 구조 / 라우트 (Expo Router)
+
+앱이 1차 클라이언트다(2026-11-01). 라우트는 Expo Router 파일 경로이며, 보류된 웹(`apps/web`)도 같은 경로 이름을 쓴다. `(auth)`는 비로그인 스택, `(app)`은 로그인 후 하단 탭이다.
 
 | 라우트 | 화면 | 인증 |
 |---|---|---|
-| `/` | 랜딩(비로그인) → 로그인 시 `/home` 리다이렉트 | — |
-| `/signup`, `/signup/verify`, `/login`, `/password-reset`, `/password-reset/confirm` | SCR-002 | — |
+| `/` | 온보딩(비로그인) → 저장된 토큰이 유효하면 `/home` | — |
+| `/signup`, `/signup/verify`, `/login`, `/password-reset`, `/password-reset/confirm` | SCR-002 (재설정 확인은 링크 대신 이메일+6자리 코드+새 비밀번호) | — |
 | `/home` | SCR-003 | ✔ |
 | `/checkups/new` | SCR-004 업로드 (+ "직접 입력" 링크) | ✔ |
 | `/checkups/[id]/analysis` | SCR-005 | ✔ |
@@ -44,7 +46,13 @@ flowchart TD
 | `/info/[code]` | SCR-010 (P1) | ✔ |
 | `/me`, `/me/consents`, `/me/export`, `/me/delete` | SCR-012 | ✔ |
 
-하단 탭: 홈 · 검진기록 · 건강변화 · MY (모바일). 데스크톱(≥1024px)은 좌측 내비게이션.
+하단 탭: 홈 · 검진기록 · 건강변화 · MY. 이메일·개인정보는 URL·라우트 파라미터에 넣지 않는다(화면 간 전달은 메모리 상태로).
+
+앱 고유 동작:
+- 업로드: "사진 찍기"(카메라) · "사진첩에서 선택"(여러 장) · "PDF 파일 선택". 카메라·사진첩 권한은 처음 누를 때 요청하고, 거부 시 설정으로 이동하는 안내를 보여준다.
+- 앱이 백그라운드로 갈 때 건강정보 화면은 앱 전환기 미리보기에서 가린다(P1).
+- 안드로이드 뒤로가기는 스택 뒤로가기와 동일. 확정 전 검증 화면은 이탈 확인.
+- 네트워크 끊김: 상단 오프라인 배너, 업로드는 재시도 가능 상태로 유지.
 
 ## 3. 화면별 상태
 
@@ -114,15 +122,15 @@ flowchart TD
 
 ### 6.2 타이포·간격·형태
 
-- 폰트: Pretendard (자체 호스팅, OFL). 본문 16px/1.5, 보조 14px, 제목 20/24px. 수치는 `font-variant-numeric: tabular-nums`.
+- 폰트: Pretendard (앱 번들 포함, OFL, expo-font). 본문 16/24, 보조 14, 제목 20/24. 수치는 `fontVariant: ['tabular-nums']`. 시스템 글꼴 크기 설정(Dynamic Type / 글꼴 크기)을 따른다.
 - 간격: 4/8/12/16/24/32/48 (8px 체계 + 4 보조).
 - 모서리: 카드 16px, 입력·버튼 12px.
-- 터치 타깃 ≥ 44×44px. 포커스 링 2px `primary` + 2px 오프셋.
+- 터치 타깃 ≥ 44×44pt(Android 48dp). 토큰은 `apps/mobile/src/theme.ts`에 두고 웹의 `globals.css` 값과 같게 유지.
 - 아이콘: Lucide(선 아이콘, 1.75px) 단일 세트.
 
 ### 6.3 컴포넌트 (Sprint 1부터 점진적)
 
-Button(primary/secondary/ghost/danger), TextField, CodeInput(6자리), Card, StatusBadge(분석 상태), ReviewFlag, MeasurementRow, FileDropzone, ProgressBar, Skeleton, EmptyState, ErrorState, Dialog(2단계 확인), BottomTab, TrendChart + DataTable, Toast.
+Button(primary/secondary/ghost/danger), TextField, CodeInput(6자리), Card, StatusBadge(분석 상태), ReviewFlag, MeasurementRow, UploadSourceSheet(카메라/사진첩/PDF), ProgressBar, Skeleton, EmptyState, ErrorState, Dialog(2단계 확인), BottomTab, TrendChart + DataTable, Toast.
 
 ### 6.4 카피 원칙
 
@@ -133,12 +141,12 @@ Button(primary/secondary/ghost/danger), TextField, CodeInput(6자리), Card, Sta
 | "AI가 분석한 정확도 97%" | "자동으로 읽은 값이에요. 원본과 비교해 확인해주세요" |
 | "지금 바로 관리하지 않으면…" | "궁금한 점은 의료진과 상담해보세요" |
 
-## 7. 접근성 체크리스트 (WCAG 2.2 AA 지향)
+## 7. 접근성 체크리스트 (WCAG 2.2 AA · 플랫폼 접근성 지향)
 
-- 모든 입력에 `<label>`, 오류는 `aria-describedby` + 텍스트.
-- 상태 변경(분석 완료, 저장 완료)은 `aria-live="polite"`.
+- 모든 입력에 `accessibilityLabel`, 오류는 텍스트로 표시하고 `accessibilityHint`/알림으로 읽힘.
+- 상태 변경(분석 완료, 저장 완료)은 `AccessibilityInfo.announceForAccessibility`.
 - 색상만으로 정보 전달 금지(확인 필요 = 아이콘 + 텍스트).
-- 키보드만으로 업로드·검증·확정 완료 가능(Playwright 테스트로 보장).
+- VoiceOver·TalkBack만으로 업로드·검증·확정 완료 가능(Sprint별 수동 점검 + RNTL 역할/라벨 테스트).
 - 차트는 대체 표 제공.
-- 200% 확대, 320px 폭에서 가로 스크롤 없음.
-- `prefers-reduced-motion` 존중.
+- 시스템 글꼴 최대 크기에서 잘림·겹침 없음, 320pt 폭 지원.
+- "동작 줄이기"(Reduce Motion) 설정 존중.

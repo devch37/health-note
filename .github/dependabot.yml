@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /backend
+    schedule:
+      interval: weekly
+  # Expo SDK에 맞는 버전은 `npx expo install --fix`로 맞추므로 SDK 업그레이드 때 함께 올린다.
+  - package-ecosystem: npm
+    directory: /apps/mobile
+    ignore:
+      - dependency-name: "expo*"
+      - dependency-name: "react-native*"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "@expo/*"
+      - dependency-name: "jest-expo"
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

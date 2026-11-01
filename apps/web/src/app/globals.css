@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+/* 디자인 토큰(docs/UX.md §6). 대비 검토 결과에 따라 텍스트용 색을 따로 둔다. */
+@theme {
+  --color-primary: #18b89a;        /* 브랜드·아이콘·포커스 링. 본문 글자색 금지(2.51:1) */
+  --color-primary-strong: #087f6d; /* 버튼 배경·링크 글자(4.92:1) */
+  --color-bg: #f7f9fa;
+  --color-surface: #ffffff;
+  --color-text: #172b3a;
+  --color-text-secondary: #5e6e7e;
+  --color-border: #dfe5ea;
+  --color-info: #3b82f6;
+  --color-info-text: #1d4ed8;
+  --color-warning: #f59e0b;
+  --color-warning-text: #92400e;
+  --color-error: #ef4444;
+  --color-error-text: #b91c1c;
+
+  --font-sans: var(--font-pretendard), system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+
+  --radius-card: 16px;
+  --radius-control: 12px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

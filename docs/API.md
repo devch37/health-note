@@ -5,8 +5,18 @@
 ## 1. 공통 규약
 
 ### 인증
-- 세션 쿠키 `GN_SESSION` (HttpOnly, Secure, SameSite=Lax, Path=/).
-- 상태 변경 요청(POST/PUT/PATCH/DELETE)은 CSRF 토큰 필요: `GET /api/v1/auth/csrf`로 받은 값을 `X-XSRF-TOKEN` 헤더로 전송(Spring Security CookieCsrfTokenRepository).
+
+서버 세션 하나를 두 가지 방식으로 전달한다. 앱이 1차 클라이언트다(2026-11-01, [ANALYSIS.md §6](ANALYSIS.md)).
+
+| 클라이언트 | 세션 전달 | CSRF | 세션 수명 |
+|---|---|---|---|
+| **앱 (iOS·Android)** | 요청 헤더 `X-Client: app`을 보내면 로그인·인증코드 확인 응답 헤더 `X-Auth-Token`에 세션 토큰이 담긴다. 이후 모든 요청에 `X-Auth-Token: <token>`. 쿠키를 쓰지 않는다 | 불필요(헤더 인증은 브라우저가 자동으로 붙이지 않음) | 유휴 30일, 절대 90일(제안) |
+| (보류) 웹 | 세션 쿠키 `GN_SESSION` (HttpOnly, Secure, SameSite=Lax, Path=/) | 상태 변경 요청(POST/PUT/PATCH/DELETE)은 `GET /api/v1/auth/csrf`로 받은 값을 `X-XSRF-TOKEN` 헤더로 전송 | 유휴 30분, 절대 7일 |
+
+- `X-Auth-Token`이 있는 요청은 쿠키를 무시한다. 무효·만료 토큰은 `401 UNAUTHENTICATED`이며 앱은 저장된 토큰을 지우고 로그인 화면으로 보낸다.
+- 토큰은 기기 보안 저장소(iOS Keychain, Android Keystore — expo-secure-store)에만 저장한다. 로그·크래시 리포트에 남기지 않는다.
+- 로그아웃은 서버 세션을 삭제한 뒤 앱이 저장된 토큰을 지운다(응답 `X-Auth-Token`이 빈 값).
+- CORS: 기본은 어떤 출처도 허용하지 않는다. `local` 프로필에서만 Expo 웹 미리보기(`http://localhost:8081`)를 허용하며 자격증명(쿠키)은 허용하지 않는다(`app.cors-allowed-origins`).
 - 건강정보 API는 `ACTIVE`(이메일 인증 완료) 사용자만. 미인증은 `403 EMAIL_NOT_VERIFIED`.
 
 ### 오류 형식 (RFC 9457 ProblemDetail)
@@ -59,13 +69,13 @@
 | Method | Path | 설명 | 인증 |
 |---|---|---|---|
 | GET | `/auth/csrf` | CSRF 토큰 발급 | — |
-| POST | `/auth/signup` | 가입 + 인증코드 발송 | — |
-| POST | `/auth/email-verifications/confirm` | 인증코드 확인 | 세션(미인증 허용) |
-| POST | `/auth/email-verifications/resend` | 인증코드 재발송 (1분 쿨다운) | 세션(미인증 허용) |
+| POST | `/auth/signup` | 가입 + 인증코드 발송 (세션을 만들지 않음) | — |
+| POST | `/auth/email-verifications/confirm` | 이메일 + 인증코드 확인 → 성공 시 로그인 세션 생성 | — |
+| POST | `/auth/email-verifications/resend` | 인증코드 재발송 (1분 쿨다운, 항상 202) | — |
 | POST | `/auth/login` | 로그인 | — |
 | POST | `/auth/logout` | 로그아웃(세션 무효화) | 세션 |
-| POST | `/auth/password-reset/request` | 재설정 메일 요청 (항상 202) | — |
-| POST | `/auth/password-reset/confirm` | 토큰 + 새 비밀번호 | — |
+| POST | `/auth/password-reset/request` | 재설정 코드 메일 요청 (항상 202, 1분 쿨다운) | — |
+| POST | `/auth/password-reset/confirm` | 이메일 + 6자리 코드 + 새 비밀번호 | — |
 
 **POST /auth/signup**
 ```json
@@ -79,15 +89,22 @@
     { "type": "SENSITIVE_HEALTH_DATA", "version": "2026-10-01" }
   ]
 }
-// 202 Accepted — 새 계정이면 세션 생성(PENDING_VERIFICATION) + 코드 발송
+// 202 Accepted — 새 계정이든 기존 계정이든 같은 응답, 세션 쿠키 없음
 { "status": "VERIFICATION_REQUIRED" }
 ```
+- 새 이메일: 계정(PENDING_VERIFICATION) 생성 + 코드 발송.
+- 인증 완료된 기존 이메일: "이미 가입됨" 안내 메일만 발송.
+- 미인증 기존 이메일: 비밀번호는 바꾸지 않고 코드만 재발송(쿨다운 적용). 선점된 계정은 비밀번호 재설정으로 회수하며, 재설정이 이메일 소유를 증명하므로 계정이 ACTIVE가 된다.
 - 비밀번호: 10~128자, 유출 비밀번호 목록 검사(P1), 이메일과 동일 불가.
 - 필수 동의 누락 시 400.
 
-**POST /auth/email-verifications/confirm** `{ "code": "123456" }` → `200 { "user": UserMe }`. 5회 실패 시 코드 무효화.
+**POST /auth/email-verifications/confirm** `{ "email": "user@example.com", "code": "123456" }` → `200 { "user": UserMe }` + 세션 쿠키. 틀린 코드·만료·없는 이메일은 모두 `400 INVALID_VERIFICATION_CODE`. 코드당 5회 실패 시 무효화.
 
-**POST /auth/login** `{ "email", "password" }` → `200 { "user": UserMe }` + 세션 쿠키(세션 ID 재발급). 실패는 원인 구분 없이 `401 INVALID_CREDENTIALS`. 제한: 이메일 기준 15분 5회 실패 → 15분 잠금(429), IP 기준 별도 상한.
+**GET /auth/csrf** → `200 { "headerName": "X-XSRF-TOKEN" }` + `XSRF-TOKEN` 쿠키(HttpOnly 아님). 클라이언트는 쿠키 값을 헤더로 보낸다. 세션을 만들지 않는다.
+
+**POST /auth/password-reset/confirm** `{ "email", "code": "123456", "newPassword" }` → `204`. 앱에서 딥링크 없이 쓰기 위해 메일 링크 대신 6자리 코드를 쓴다(2026-11-01 변경, Sprint 1.5 구현). 코드 유효 30분, 코드당 5회 실패 시 무효화, 틀린 코드·만료·없는 이메일은 모두 `400 INVALID_RESET_CODE`. 성공 시 그 사용자의 모든 세션 삭제(로그인 세션을 만들지 않음).
+
+**POST /auth/login** `{ "email", "password" }` → `200 { "user": UserMe }` + 세션 쿠키(세션 ID 재발급). 미인증 계정도 로그인되지만(`emailVerified: false`) 건강정보 API는 `403 EMAIL_NOT_VERIFIED`. 실패는 원인 구분 없이 `401 INVALID_CREDENTIALS`. 제한: 이메일 기준 15분 5회 실패 → 15분 잠금(429), IP 기준 별도 상한.
 
 ## 3. Users
 
